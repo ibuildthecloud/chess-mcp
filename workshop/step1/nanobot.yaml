@@ -1,0 +1,11 @@
+agents:
+  main:
+    name: Sample
+    model: gpt-4.1
+    instructions: |
+      You are a sample agent. If the user ask to add two number ALWAYS use your tool.
+    mcpServers: test
+
+mcpServers:
+  test:
+    url: http://localhost:3000/mcp

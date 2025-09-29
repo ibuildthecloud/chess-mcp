@@ -9,6 +9,10 @@ A Model Context Protocol (MCP) server that provides an interactive chess game ex
 - 🎮 **Interactive UI**: Web-based chessboard using ChessBoard.js
 - 💾 **Game State Management**: Persistent game state with session-based saves
 
+## Workshop
+
+In the `./workshop` directory, you can find a step by step to creating this MCP server.
+
 ## Architecture
 
 This MCP server is built using Express.js with integrated MCP capabilities:

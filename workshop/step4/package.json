@@ -1,24 +1,20 @@
 {
-  "name": "chess-mcp",
+  "name": "chess-mcp-step4",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "workshop/*"
-  ],
   "scripts": {
     "dev": "tsx src/server.ts",
     "format": "npx @biomejs/biome format --write ./src",
     "lint": "npx @biomejs/biome lint --write ./src"
   },
   "dependencies": {
-    "@mcp-ui/server": "^5.10.0",
+    "@mcp-ui/server": "^5.11.0",
     "@modelcontextprotocol/sdk": "^1.18.0",
     "chess.js": "^1.4.0",
     "express": "^5.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.4",
-    "@types/chess.js": "^0.13.7",
     "@types/express": "^5.0.1",
     "@types/express-serve-static-core": "^5.0.6",
     "@types/node": "^20.19.17",

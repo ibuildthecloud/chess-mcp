@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Chess MCP Server Workshop</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.6.0/dist/reveal.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.6.0/dist/theme/black.css">
+    <style>
+        .reveal pre { font-size: 0.5em; }
+        .reveal code { max-height: 500px; }
+        .reveal h1 { font-size: 2.5em; }
+        .reveal h2 { font-size: 1.8em; }
+        .reveal ul { font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="reveal">
+        <div class="slides">
+            <section data-markdown>
+                <textarea data-template>
+# Chess MCP Server Workshop
+
+Build a fully functional Chess MCP server with an interactive UI that allows AI agents to play chess!
+
+---
+
+## What We'll Build
+
+By the end of this workshop, you'll have created:
+
+- ♟️ A Chess MCP server that accepts moves in algebraic notation
+- 💾 Stateful game persistence across sessions
+- 📊 ASCII and graphical board displays
+- 🎮 Interactive drag-and-drop chessboard UI
+- 🤖 AI agents that can play chess with you
+
+---
+
+## Workshop Overview
+
+**5 Progressive Steps:**
+
+1. Basic MCP Server Setup
+2. Adding Chess Functionality
+3. Adding State Management
+4. Adding Basic UI Components
+5. Interactive Chessboard UI
+
+---
+
+## Prerequisites
+
+- ✅ Node.js 20+ installed
+- ✅ Basic TypeScript knowledge
+- ✅ Text editor or IDE
+- ✅ Terminal/command line access
+- ✅ Nanobot installed: `brew install nanobot-ai/tap/nanobot`
+
+---
+
+# Step 1: Basic MCP Server Setup
+
+**Goal:** Create a minimal MCP server with a simple tool
+
+---
+
+## Step 1: What You'll Learn
+
+- 🔧 MCP server structure and configuration
+- 🛠️ How to register tools with the MCP SDK
+- 🌐 HTTP transport middleware setup
+- 📨 Basic request/response handling
+
+---
+
+## Step 1: Setup
+
+```bash
+# Initialize project
+mkdir chess && cd chess
+npm init -y
+
+# Install dependencies
+npm install @modelcontextprotocol/sdk express zod
+npm install -D @biomejs/biome @types/express @types/node tsx typescript
+```
+
+---
+
+## Step 1: Create Server
+
+```typescript
+function newServer() {
+  const server = new McpServer({
+    name: "Sample MCP Server",
+    version: "0.0.1",
+  });
+
+  server.registerTool(
+    "add_numbers",
+    {
+      description: "A tool to add two numbers",
+      inputSchema: {
+        left: z.number().describe("The left operand"),
+        right: z.number().describe("The right operand")
+      },
+    },
+    async ({ left, right }) => {
+      return {
+        content: [{
+          type: "text",
+          text: `The sum of ${left} and ${right} is ${left + right}`,
+        }]
+      };
+    },
+  );
+
+  return server;
+}
+```
+
+---
+
+## Step 1: Wire Up Express
+
+```typescript
+const app = express();
+app.use("/mcp", Middleware(newServer));
+
+console.log("Starting server on http://localhost:3000/mcp");
+app.listen(3000);
+```
+
+---
+
+## Step 1: Test It Out
+
+```bash
+# Start the server
+npm run dev
+
+# Run nanobot
+nanobot run ./nanobot.yaml
+```
+
+Ask: **"What is 5 + 3?"**
+
+The agent should use the `add_numbers` tool! ✨
+
+---
+
+## Step 1: Key Concepts
+
+- **MCP Server**: Core instance that manages tools and resources
+- **Tool Registration**: `server.registerTool(name, schema, handler)`
+- **Input Schema**: Uses Zod for type-safe parameter validation
+- **Middleware**: Handles HTTP transport and session management
+- **Response Format**: Returns content array with text or other types
+
+---
+
+# Step 2: Adding Chess Functionality
+
+**Goal:** Replace simple addition with actual chess!
+
+---
+
+## Step 2: What You'll Learn
+
+- 🎲 Using third-party libraries (chess.js)
+- ♟️ Implementing domain-specific tools
+- ✅ Handling chess move validation
+- 📋 Returning formatted game state
+
+---
+
+## Step 2: Install chess.js
+
+```bash
+npm install chess.js
+```
+
+---
+
+## Step 2: Create Chess Tool
+
+```typescript
+server.registerTool(
+  "chess_move",
+  {
+    description: "Make a move in standard algebraic notation (e.g., e4, Nf3, O-O)",
+    inputSchema: {
+      move: z.string().describe(
+        "The chess move in standard algebraic notation, or 'new' to start a new game"
+      ),
+    },
+  },
+  async ({ move }, ctx) => {
+    const game = new Chess();
+    game.move(move.trim());
+
+    return {
+      content: [{
+        type: "text",
+        text: `Current board state:
+        FEN: ${game.fen()}
+        VALID MOVES: ${game.moves()}
+
+        ${game.ascii()}`,
+      }]
+    }
+  },
+);
+```
+
+---
+
+## Step 2: Test It Out
+
+```bash
+npm run dev
+nanobot run ./nanobot.yaml
+```
+
+Try: **"Make the move e4"**
+
+You should see the chess board in ASCII! ♟️
+
+---
+
+## Step 2: The Problem
+
+**Issue:** Each request creates a new game!
+
+The game state doesn't persist between moves. 😢
+
+**Solution:** We need state management (Step 3).
+
+---
+
+## Step 2: Key Concepts
+
+- **chess.js**: Full chess library with move validation
+- **FEN notation**: Standard format for chess positions
+- **ASCII board**: Text representation using `game.ascii()`
+- **Valid moves**: `game.moves()` returns all legal moves
+- **Context**: The `ctx` parameter (which we'll use next)
+
+---
+
+# Step 3: Adding State Management
+
+**Goal:** Persist game state between moves
+
+---
+
+## Step 3: What You'll Learn
+
+- 🔐 Session-based state management
+- 💾 File system storage for persistence
+- 📂 Loading and saving game state
+- 🆕 Handling "new game" vs "continue game" scenarios
+
+---
+
+## Step 3: Create Store
+
+```typescript
+// src/lib/store.ts
+import { writeFile, readFile, mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { Chess } from "chess.js";
+
+export async function saveGame(
+  sessionId: string | undefined,
+  game: Chess,
+): Promise<void> {
+  if (!existsSync("./games")) {
+    await mkdir("./games", { recursive: true });
+  }
+
+  await writeFile(
+    `./games/${sessionId}.json`,
+    JSON.stringify(game.fen(), null, 2),
+  );
+}
+
+export async function loadGame(sessionId?: string): Promise<Chess | null> {
+  if (!existsSync(`./games/${sessionId}.json`) || !sessionId) {
+    return null;
+  }
+
+  const data = await readFile(`./games/${sessionId}.json`, "utf-8");
+  const fen = JSON.parse(data) as string;
+  return new Chess(fen);
+}
+```
+
+---
+
+## Step 3: Update Tool Handler
+
+```typescript
+async ({ move }, ctx) => {
+  let game = await loadGame(ctx.sessionId);
+
+  if (move === "new") {
+    game = new Chess();
+  } else if (!game) {
+    game = new Chess();
+  }
+
+  game.move(move.trim());
+  await saveGame(ctx.sessionId, game);
+
+  return {
+    content: [{
+      type: "text",
+      text: `Current board state:
+      FEN: ${game.fen()}
+      VALID MOVES: ${game.moves()}
+
+      ${game.ascii()}`
+    }]
+  };
+}
+```
+
+---
+
+## Step 3: Test It Out
+
+```bash
+npm run dev
+nanobot run ./nanobot.yaml
+```
+
+Try: **"Let's play chess, you go first as white"**
+
+The agent makes a move, you respond, and the game state persists! 🎉
+
+---
+
+## Step 3: How It Works
+
+**Flow:**
+1. **Session ID**: Each nanobot session gets unique ID via `ctx.sessionId`
+2. **File Storage**: Games saved as JSON files in `./games/` directory
+3. **FEN Format**: Only save position string, not full game history
+4. **Load → Modify → Save**: Pattern for each move
+
+---
+
+## Step 3: Key Concepts
+
+- **Context Object**: `ctx.sessionId` identifies the current session
+- **Persistence**: File-based storage for simplicity
+- **State Flow**: Load → Modify → Save pattern
+- **Graceful Defaults**: Create new game if none exists
+
+---
+
+# Step 4: Adding Basic UI Components
+
+**Goal:** Add visual representation using MCP UI resources
+
+---
+
+## Step 4: What You'll Learn
+
+- 🖼️ MCP UI resources
+- 🌐 HTML content in tool responses
+- 📐 Frame sizing and metadata
+- 📦 Multiple content types in responses
+
+---
+
+## Step 4: Install MCP UI
+
+```bash
+npm install @mcp-ui/server
+```
+
+---
+
+## Step 4: Add UI Resource
+
+```typescript
+import { createUIResource } from "@mcp-ui/server";
+
+// In tool handler, return multiple content items:
+return {
+  content: [
+    {
+      type: "text",
+      text: `Current board state:
+      FEN: ${game.fen()}
+      VALID MOVES: ${game.moves()}
+
+      ${game.ascii()}`
+    },
+    createUIResource({
+      uri: `ui://board/${game.fen()}`,
+      encoding: "text",
+      content: {
+        type: "rawHtml",
+        htmlString: `<pre>${game.ascii()}</pre>`
+      },
+      uiMetadata: {
+        "preferred-frame-size": ["700px", "300px"]
+      },
+    })
+  ]
+};
+```
+
+---
+
+## Step 4: Test It Out
+
+```bash
+npm run dev
+nanobot run ./nanobot.yaml
+```
+
+Play some moves - you should see a formatted ASCII board in a UI panel! 📊
+
+---
+
+## Step 4: Key Concepts
+
+- **UI Resources**: Special content type that renders in nanobot's UI
+- **Multiple Content Items**: Responses can include text + UI resources
+- **URI Scheme**: `ui://` URIs identify UI resources
+- **Metadata**: Frame size hints for the UI renderer
+- **HTML Content**: Raw HTML can be embedded in responses
+
+---
+
+# Step 5: Interactive Chessboard UI
+
+**Goal:** Create a beautiful, interactive chessboard with drag-and-drop
+
+---
+
+## Step 5: What You'll Learn
+
+- 🎨 Advanced UI with external libraries
+- 🖱️ Interactive UI components
+- ↔️ Bidirectional communication (UI → Tool)
+- ♟️ Using chessboard.js for visualization
+
+---
+
+## Step 5: Create Interactive UI
+
+```typescript
+function gameUI(fen: string) {
+  return createUIResource({
+    uri: `ui://chess_board/${fen}`,
+    uiMetadata: {
+      "preferred-frame-size": ["500px", "500px"]
+    },
+    encoding: "text",
+    content: {
+      type: "rawHtml",
+      htmlString: `<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet"
+    href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+</head>
+<body>
+<div id="myBoard" style="width: 400px"></div>
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+<script>
+  var board = Chessboard('myBoard', {
+    position: '${fen}',
+    draggable: true,
+    onDrop: function (source, target) {
+      window.parent.postMessage({
+        type: 'tool',
+        payload: {
+          toolName: 'chess_move',
+          params: { move: source + "-" + target }
+        }
+      }, '*')
+    }
+  })
+</script>
+</body>`
+    }
+  });
+}
+```
+
+---
+
+## Step 5: Update Response
+
+```typescript
+return {
+  content: [
+    {
+      type: "text",
+      text: `Current board state:
+      FEN: ${game.fen()}
+      VALID MOVES: ${game.moves()}
+
+      ${game.ascii()}`
+    },
+    gameUI(game.fen())
+  ]
+};
+```
+
+---
+
+## Step 5: Test It Out
+
+```bash
+npm run dev
+nanobot run ./nanobot.yaml
+```
+
+Start a game - you should see a beautiful chessboard!
+
+**Try dragging pieces!** When you drag, it sends the move back to the tool! 🎮
+
+---
+
+## Step 5: How Interactive UI Works
+
+**Flow:**
+1. **Chessboard.js** renders the board and enables drag-and-drop
+2. **onDrop Handler** captures drag-and-drop events
+3. **postMessage** sends move data to parent window (nanobot)
+4. **Tool Invocation** nanobot receives message and calls `chess_move` tool
+5. **UI Update** new board state is rendered
+
+---
+
+## Step 5: Key Concepts
+
+- **External Libraries**: Can load CSS/JS from CDNs
+- **Event Handlers**: JavaScript in UI can respond to user actions
+- **postMessage API**: Standard way to communicate with parent window
+- **Tool Callback**: UI can trigger tool calls programmatically
+- **Dynamic FEN**: UI updates with current position via template strings
+
+---
+
+# Congratulations! 🎉
+
+You've built a complete Chess MCP server with:
+
+- ✅ HTTP transport and session management
+- ✅ Tool registration and validation
+- ✅ Stateful game persistence
+- ✅ Interactive UI components
+- ✅ Bidirectional communication
+
+---
+
+## Next Steps: Enhancements
+
+**Multiple Tools:**
+- `get_valid_moves` - Get all legal moves
+- `undo_move` - Take back the last move
+- `get_game_history` - View move history in PGN
+- `analyze_position` - Get position evaluation
+
+**Advanced Features:**
+- Save multiple games per session
+- Export/import games as PGN
+- Add time controls
+- Chess puzzles
+
+---
+
+## Next Steps: Better Storage
+
+- Use SQLite or PostgreSQL
+- Store full game history, not just current position
+- Add game metadata (players, dates, etc.)
+
+---
+
+## Next Steps: Enhanced UI
+
+- Move history panel
+- Captured pieces display
+- Position evaluation bar
+- Suggested moves
+
+---
+
+## Next Steps: Multi-User
+
+- Support games between two human players
+- Spectator mode
+- Game sharing via URLs
+
+---
+
+## Resources
+
+- [MCP Documentation](https://modelcontextprotocol.io/)
+- [MCP SDK Reference](https://github.com/modelcontextprotocol/sdk)
+- [chess.js Library](https://github.com/jhlywa/chess.js)
+- [chessboard.js Library](https://chessboardjs.com/)
+- [Nanobot Documentation](https://github.com/anthropics/nanobot)
+
+---
+
+## Troubleshooting
+
+**Server won't start:**
+- Check that port 3000 is available
+- Verify all dependencies: `npm install`
+- Check Node.js version: `node --version` (should be 20+)
+
+**Agent not using the tool:**
+- Verify nanobot.yaml location
+- Check server is running: `curl http://localhost:3000/mcp`
+- Ensure instructions mention using the tool
+
+---
+
+## Troubleshooting (continued)
+
+**UI not displaying:**
+- Verify @mcp-ui/server is installed
+- Check browser console for JavaScript errors
+- Ensure HTML is properly formatted
+
+**State not persisting:**
+- Check that `./games` directory exists
+- Verify file permissions for writing
+- Ensure sessionId is being passed correctly
+
+---
+
+## Questions?
+
+Open an issue in the workshop repository or check the MCP documentation!
+
+**Thank you for participating!** 🙏
+                </textarea>
+            </section>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js@4.6.0/dist/reveal.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js@4.6.0/plugin/markdown/markdown.js"></script>
+    <script>
+        Reveal.initialize({
+            hash: true,
+            plugins: [ RevealMarkdown ]
+        });
+    </script>
+</body>
+</html>

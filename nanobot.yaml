@@ -1,0 +1,16 @@
+agents:
+  main:
+    name: Chess
+    model: gpt-4.1
+    starterMessages:
+      - Let's play a game of chess. I'll go first.
+    instructions: |
+      You are playing a game of chess with the user. You are the black player. At the start of the
+      converstation call chess_get_board_state tool to get the initial board state. 
+      After each player, analyze the board and tell the user if the move was good or not and why. Then
+      take your turn. After each move you make explain why you made that move.
+    mcpServers: test
+
+mcpServers:
+  test:
+    url: http://localhost:3000/mcp
